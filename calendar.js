@@ -43,12 +43,12 @@ module.exports = function(router, mongoose, auth, graph){
             // Get calendar events for users
             graph.getEvents(token, users, res).then(function(data){
 
-              Activity.find(function(err, activity) {
+              Activity.find(function(err, activities) {
 
                 //The number of entries for the collection will always remain 6.
                 //Therefore, it is safe to get all the entries. However, this is
                 //not recommended once we go above 30+ entries
-                var activities = activity;
+                //var activities = activity;
 
                 if(canUserTakeBreak(data)==true){
                   res.json({message:data})
@@ -59,13 +59,16 @@ module.exports = function(router, mongoose, auth, graph){
                     else{
                       users.forEach(function(user, index){
                           var message = {}
-                          activity =  activities[Math.floor(Math.random() * activities.length)]
+                          var activity =  activities[Math.floor(Math.random() * activities.length)]
                           message.activity = activity.activity;
                           message.name = activity.name
                           message.imgUrl = activity.imgUrl
                           message.firstUser = 1;
                           var str = ""
                           message.prompt = str.concat("Hi, ", user.name , " ! " , activity.activity)
+                          //this activity id will be sent back in the url so that we use same activity details in 
+                          //calendar appointment details and informing others of type of activity
+                          message.activityId = activity._id;
                           console.log(message)
                           graph.pushNotification(message, user.chromeId)
                     })
@@ -87,7 +90,7 @@ module.exports = function(router, mongoose, auth, graph){
       });
   });
 
-  router.get('/accepted/:emailId/:name', function(req, res){
+  router.get('/accepted/:emailId/:name/:activityId', function(req, res){
     
     // Get an access token for the app.
     auth.getAccessToken().then(function (token) {
@@ -101,8 +104,15 @@ module.exports = function(router, mongoose, auth, graph){
             if(user.mail==req.params.emailId)
             {
               console.error('>>> matched mailid in foreach');              
-              var event = fillEventDetails(req);
+              
+              //getting activity details so that same will be set in calendar invite also
+              Activity.findById(req.params.activityId,function(err, activityRec) {
+              var event = fillEventDetails(req,activityRec);
+              console.error('>>> event details: ' + event);
               createCalEvent(token,user,event);
+              });
+
+              
                
             }
             else
@@ -114,12 +124,15 @@ module.exports = function(router, mongoose, auth, graph){
           // Get calendar events for users
           graph.getEvents(token, users, res).then(function(data){
 
-            Activity.find(function(err, activity) {
 
+            Activity.findById(req.params.activityId,function(err, activityRec) {
+
+              console.error('>>> activity find call back activity='+activityRec);
+              
               //The number of entries for the collection will always remain 6.
               //Therefore, it is safe to get all the entries. However, this is
               //not recommended once we go above 30+ entries
-              var activities = activity;
+              //var activities = activity;
 
               if(canUserTakeBreak(data)==true){
                 res.json({message:data})
@@ -130,10 +143,11 @@ module.exports = function(router, mongoose, auth, graph){
                   else{
                     users.forEach(function(user, index){
                         var message = {}
-                        message.imgUrl = "cat.jpg"
+                        message.imgUrl = activityRec.imgUrl;
                         message.firstUser = 1;
-                        var str = ""
-                        message.prompt = str.concat("Hi, ", user.name , " ! " , "Join ", req.params.name, " for a fun break activity!")
+                        var str = "";
+                        message.prompt = str.concat("Hi, ", user.name , " ! " , "Join ", req.params.name, " for "+ activityRec.activity);
+                        message.activityId = activityRec._id;
                         console.log(message)
                         graph.pushNotification(message, user.chromeId)
                   })
@@ -187,7 +201,8 @@ function canUserTakeBreak(listOfEvents){
       activity: response.activity,
       name: response.name,
       prompt: response.prompt,
-      imgUrl:response.imgUrl
+      imgUrl:response.imgUrl,
+      activityId:response.activityId
     });
     sender.send(message, { registrationTokens: [chromeId] }, function (err, response) {
         if(err) console.error(err);
@@ -197,8 +212,8 @@ function canUserTakeBreak(listOfEvents){
 // @name fillEventDetails
 // @desc Creates an event variable and fills necessary data
 // @param req rest api request with all necessary parameters  
-function fillEventDetails(req) {
-
+function fillEventDetails(req,activityRec) {
+    console.error('>>> Fill event details entered ');
     // The new event will be 10 minutes and take place today at the current time.
     var startTime = new Date();
     startTime.setDate(startTime.getDate());
@@ -207,9 +222,9 @@ function fillEventDetails(req) {
 
       // These are the fields of the new calendar event.
     var newEvent = {
-      Subject: 'Healthy Break Time',
+      Subject: "Break: "+activityRec.activity,
       Location: {
-        DisplayName: "Not at desk ;-)"
+        DisplayName: "Healthy Land ;-)"
       },
       Start: {
         'DateTime': startTime,
@@ -221,12 +236,13 @@ function fillEventDetails(req) {
       },
       "ShowAs":"Oof",
       Body: {
-        Content: '<html> <head></head> <body>Take a Break & be more Efficient  <img src="http://thumbs.dreamstime.com/z/business-man-suit-walking-beach-13321410.jpg" height="70" width="42" </body> </html>',
+        Content: '<html> <head></head> <body><p>'+activityRec.name+' '+activityRec.activity +'</p>' +'<img src="http://thumbs.dreamstime.com/z/business-man-suit-walking-beach-13321410.jpg" height="70" width="42" </body> </html>',
         ContentType: 'HTML'
       }
     };
     
     return newEvent;
+
 }
 
 // @name createEvent
