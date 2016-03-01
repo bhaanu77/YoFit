@@ -143,6 +143,7 @@ module.exports = function(router, mongoose, auth, graph){
                   else{
                     users.forEach(function(user, index){
                         var message = {}
+                        message.name = activityRec.name;
                         message.imgUrl = activityRec.imgUrl;
                         message.firstUser = 1;
                         var str = "";
